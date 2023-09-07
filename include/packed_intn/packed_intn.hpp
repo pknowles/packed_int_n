@@ -2,12 +2,12 @@
 
 #pragma once
 
+#include <algorithm>
+#include <iterator>
+#include <limits>
+#include <span>
 #include <type_traits>
 #include <vector>
-#include <limits>
-#include <iterator>
-#include <span>
-#include <algorithm>
 
 #if __has_include(<ranges>)
 #include <ranges>
@@ -67,9 +67,10 @@ template <typename base_iterator, size_t bits>
 class packed_uintn_iterator : base_iterator {
 public:
   using iterator_category = std::random_access_iterator_tag;
-  using value_type        = std::remove_reference_t<decltype(*std::declval<base_iterator>())>;
-  using reference         = packed_uintn_value<value_type, bits>;
-  using const_reference = reference; // TODO: const?? 
+  using value_type =
+      std::remove_reference_t<decltype(*std::declval<base_iterator>())>;
+  using reference       = packed_uintn_value<value_type, bits>;
+  using const_reference = reference; // TODO: const??
   using difference_type = typename base_iterator::difference_type;
   using offset_type     = size_t;
 
@@ -187,8 +188,8 @@ public:
   static constexpr offset_type s_baseBits = sizeof(value_type) * 8;
 
 private:
-  base_iterator        m_base;
-  offset_type m_offsetBits;
+  base_iterator m_base;
+  offset_type   m_offsetBits;
 
   inline offset_type base_element_offset() const {
     return m_offsetBits / s_baseBits;
@@ -206,8 +207,8 @@ class packed_uintn {
 public:
   using iterator =
       packed_uintn_iterator<typename std::vector<T>::iterator, bits>;
-  using const_iterator =
-      packed_uintn_iterator<typename std::add_const_t<std::vector<T>>::const_iterator, bits>;
+  using const_iterator = packed_uintn_iterator<
+      typename std::add_const_t<std::vector<T>>::const_iterator, bits>;
   using value_type      = typename iterator::value_type;
   using reference       = typename iterator::reference;
   using const_reference = typename iterator::const_reference;
@@ -238,7 +239,9 @@ public:
 #endif
 
   reference       operator[](size_type index) { return *(begin() + index); }
-  const_reference operator[](size_type index) const { return *(begin() + index); }
+  const_reference operator[](size_type index) const {
+    return *(begin() + index);
+  }
 
   iterator       begin() { return iterator(m_container.begin(), 0); }
   const_iterator begin() const {
@@ -291,9 +294,8 @@ private:
 template <size_t bits, class T>
 class reinterpret_packed_uintn {
 public:
-  using iterator =
-      packed_uintn_iterator<typename std::span<T>::iterator, bits>;
-  using const_iterator = iterator;
+  using iterator = packed_uintn_iterator<typename std::span<T>::iterator, bits>;
+  using const_iterator  = iterator;
   using value_type      = typename iterator::value_type;
   using reference       = typename iterator::reference;
   using const_reference = typename iterator::const_reference;
@@ -306,24 +308,20 @@ public:
         m_size(size_from_base_elements(m_span.size())) {}
 
   reference       operator[](size_type index) { return *(begin() + index); }
-  const_reference operator[](size_type index) const { return *(begin() + index); }
+  const_reference operator[](size_type index) const {
+    return *(begin() + index);
+  }
 
   iterator       begin() { return iterator(m_span.begin(), 0); }
-  const_iterator begin() const {
-    return const_iterator(m_span.begin(), 0);
-  }
+  const_iterator begin() const { return const_iterator(m_span.begin(), 0); }
   iterator       end() { return iterator(m_span.begin(), m_size); }
-  const_iterator end() const {
-    return const_iterator(m_span.begin(), m_size);
-  }
+  const_iterator end() const { return const_iterator(m_span.begin(), m_size); }
 
-  uint8_t* data() { return reinterpret_cast<uint8_t*>(m_span.data()); }
+  uint8_t*       data() { return reinterpret_cast<uint8_t*>(m_span.data()); }
   const uint8_t* data() const {
     return reinterpret_cast<const uint8_t*>(m_span.data());
   }
-  size_type size_bytes() const {
-    return m_span.size() * sizeof(value_type);
-  }
+  size_type size_bytes() const { return m_span.size() * sizeof(value_type); }
   size_type size() const { return m_size; }
 
 private:
@@ -337,8 +335,7 @@ private:
 
 #ifdef __cpp_lib_ranges
 template <size_t bits>
-auto make_reinterpret_packed_uintn(auto&& range)
-{
+auto make_reinterpret_packed_uintn(auto&& range) {
   using value_type = std::remove_reference_t<decltype(*range.begin())>;
   return reinterpret_packed_uintn<bits, value_type>(range);
 }
