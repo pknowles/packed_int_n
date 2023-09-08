@@ -1,7 +1,7 @@
 # Packed N-bit unsigned integer arrays
 C++ standard library compatible tightly packed n-bit integer arrays and views
 
-!! This is a new project, not particularly well tested or benchmarked
+!! This is a new project, not particularly well tested or optimized
 
 I threw this together before I saw https://github.com/gpakosz/PackedArray
 existed. Maybe better to use something like that instead. Although that's a C
@@ -54,7 +54,7 @@ for (const auto& v : array)
 
 # Limitations
 
-- Not benchmarked yet
+- Performance is still ~2x worse than writing some simple C functions
 - It is not thread safe yet - I plan to use std::atomic_ref to fix that
 - Dereferencing an iterator actually returns a reference wrapper to support writes
 

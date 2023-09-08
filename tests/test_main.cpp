@@ -1,3 +1,5 @@
+// Copyright (c) 2023 Pyarelal Knowles, MIT License
+
 #include <bitset>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -91,6 +93,17 @@ TEST(UnitTest, ConstructInitialier) {
   packed_uintn<11> array{0, 1, 2, 3, 4};
   ASSERT_EQ(array.size(), 5);
   auto it = array.begin();
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_EQ(*it, i) << "Index " << i;
+    ++it;
+  }
+}
+
+TEST(UnitTest, ConstructCopy) {
+  packed_uintn<11> array{0, 1, 2, 3, 4};
+  packed_uintn<11> copy{array};
+  ASSERT_EQ(copy.size(), 5);
+  auto it = copy.begin();
   for (int i = 0; i < 5; ++i) {
     ASSERT_EQ(*it, i) << "Index " << i;
     ++it;
@@ -221,6 +234,14 @@ TEST(UnitTest, ReinterpretConst) {
   auto                        array = make_reinterpret_packed_uintn<11>(memory);
   ASSERT_EQ(array[0], 2047u);
 }
+
+// TODO:
+//TEST(UnitTest, ReinterpretCopy) {
+//  const std::vector<uint32_t> memory(1, 4095u);
+//  auto                        array = make_reinterpret_packed_uintn<11>(memory);
+//  reinterpret_packed_uintn<11, const uint32_t> copy(array);
+//  ASSERT_EQ(copy[0], 2047u);
+//}
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

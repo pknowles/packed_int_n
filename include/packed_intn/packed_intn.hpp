@@ -15,17 +15,35 @@
 
 namespace packed_intn {
 
+template <class iterator>
+using iterator_deref_t =
+    std::remove_reference_t<decltype(*std::declval<iterator>())>;
+
+#if 0
+// A class to give a value_type or const value_type depending on whether the
+// iterator's dereferenced value is const or not.
+template <class iterator>
+using iterator_value_type =
+    std::conditional<std::is_const_v<iterator_deref_t<iterator>>,
+                     const typename iterator::value_type,
+                     typename iterator::value_type>;
+#else
+template <class iterator>
+using iterator_value_type = iterator_deref_t<iterator>;
+#endif
+
 template <class T, size_t bits>
 class packed_uintn_value {
 public:
+  packed_uintn_value(const packed_uintn_value& other) = delete;
   packed_uintn_value(T& value, uint8_t offset)
       : m_value(value), m_offset(offset) {
     static_assert(bits < s_type_bits);
     static_assert(std::is_unsigned_v<T>, "signed types are not implemented");
   }
   const packed_uintn_value& operator=(const T& value) const {
-    const T masked_value = s_mask_bits & value;
-    const T shifted_mask = s_mask_bits << m_offset;
+    const T masked_value = s_mask_bits() & value;
+    const T shifted_mask = s_mask_bits() << m_offset;
 
     // TODO: make this atomic using std::atomic_ref
     m_value = (m_value & ~shifted_mask) | (masked_value << m_offset);
@@ -33,22 +51,25 @@ public:
     // Handle bits spanning the base type
     if constexpr (s_type_bits % bits != 0) {
       uint8_t next_offset       = s_type_bits - m_offset;
-      const T next_shifted_mask = s_mask_bits >> next_offset;
+      const T next_shifted_mask = s_mask_bits() >> next_offset;
       T&      next_value        = *(&m_value + 1);
-      next_value                = m_offset ? (next_value & ~next_shifted_mask) |
-                                  (masked_value >> next_offset)
-                                           : next_value;
+      next_value                = m_offset > s_type_bits - bits
+                                      ? (next_value & ~next_shifted_mask) |
+                             (masked_value >> next_offset)
+                                      : next_value;
     }
 
     return *this;
   }
   operator T() const {
-    T first = (m_value >> m_offset) & s_mask_bits;
+    T first = (m_value >> m_offset) & s_mask_bits();
     if constexpr (s_type_bits % bits != 0) {
       // Handle bits spanning the base type
       uint8_t next_offset = s_type_bits - m_offset;
       T&      next_value  = *(&m_value + 1);
-      return first | (m_offset ? (next_value << next_offset) & s_mask_bits : 0);
+      return first | (m_offset > s_type_bits - bits
+                          ? (next_value << next_offset) & s_mask_bits()
+                          : 0);
     } else {
       // Fast path if bits equally divide the type, but then why use this class
       // at all??
@@ -56,8 +77,13 @@ public:
     }
   }
 
+  packed_uintn_value& operator=(const packed_uintn_value& other) {
+    *this = static_cast<T>(other);
+    return *this;
+  }
+
 protected:
-  static constexpr T       s_mask_bits = (1 << bits) - 1;
+  static constexpr T       s_mask_bits() { return (1 << bits) - 1; };
   static constexpr uint8_t s_type_bits = sizeof(T) * 8;
   T&                       m_value;
   uint8_t                  m_offset;
@@ -67,12 +93,11 @@ template <typename base_iterator, size_t bits>
 class packed_uintn_iterator : base_iterator {
 public:
   using iterator_category = std::random_access_iterator_tag;
-  using value_type =
-      std::remove_reference_t<decltype(*std::declval<base_iterator>())>;
-  using reference       = packed_uintn_value<value_type, bits>;
-  using const_reference = reference; // TODO: const??
-  using difference_type = typename base_iterator::difference_type;
-  using offset_type     = size_t;
+  using value_type        = iterator_value_type<base_iterator>;
+  using reference         = packed_uintn_value<value_type, bits>;
+  using const_reference   = reference; // TODO: const??
+  using difference_type   = typename base_iterator::difference_type;
+  using offset_type       = size_t;
 
   packed_uintn_iterator() : m_base(), m_offsetBits(0) {}
   packed_uintn_iterator(base_iterator iter, offset_type offsetElements)
@@ -216,6 +241,12 @@ public:
   using difference_type = typename iterator::difference_type;
 
   packed_uintn() {}
+  packed_uintn(const packed_uintn& other)
+      : m_container(other.m_container), m_size(other.m_size) {}
+  explicit packed_uintn(packed_uintn&& other)
+      : m_container(std::move(other.m_container)), m_size(other.m_size) {
+    other.m_size = 0;
+  }
   explicit packed_uintn(size_type size)
       : m_container(required_base_elements(size)), m_size(size) {}
   explicit packed_uintn(size_type size, const value_type& init)
@@ -302,10 +333,26 @@ public:
   using size_type       = typename iterator::offset_type;
   using difference_type = typename iterator::difference_type;
 
+  // TODO: const view from non-const
+  reinterpret_packed_uintn(const reinterpret_packed_uintn& other)
+      : m_span(other.m_span), m_size(other.m_size) {}
+
+#ifdef __cpp_lib_ranges
+  template <std::ranges::contiguous_range Range>
+  reinterpret_packed_uintn(Range&& range)
+      : m_span(std::forward<Range>(range)),
+        m_size(size_from_base_elements(m_span.size())) {}
+#endif
+
+  // Pass-through span constructor
+  // a common error here is copy constructing non-const from const
   template <class... Args>
   reinterpret_packed_uintn(Args&&... args)
       : m_span(std::forward<Args>(args)...),
         m_size(size_from_base_elements(m_span.size())) {}
+
+  reinterpret_packed_uintn&
+  operator=(const reinterpret_packed_uintn& other) = delete;
 
   reference       operator[](size_type index) { return *(begin() + index); }
   const_reference operator[](size_type index) const {
@@ -336,7 +383,9 @@ private:
 #ifdef __cpp_lib_ranges
 template <size_t bits>
 auto make_reinterpret_packed_uintn(auto&& range) {
-  using value_type = std::remove_reference_t<decltype(*range.begin())>;
+  // TODO: this fails due to the reference wrapper, packed_uintn_value
+  using value_type = iterator_value_type<decltype(range.begin())>;
+  // using value_type = decltype(range.begin())::value_type;
   return reinterpret_packed_uintn<bits, value_type>(range);
 }
 #endif
