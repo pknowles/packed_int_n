@@ -27,7 +27,7 @@ add_executable(${PROJECT_NAME}_tests
 target_include_directories(${PROJECT_NAME}_tests PRIVATE .)
 
 target_link_libraries(${PROJECT_NAME}_tests PRIVATE
-    packed_intn
+    tight_uint
     gtest_main
     nanobench
 )

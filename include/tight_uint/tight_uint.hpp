@@ -13,7 +13,7 @@
 #include <ranges>
 #endif
 
-namespace packed_intn {
+namespace tight_uint {
 
 // clang-format off
 template <size_t bits> struct uint_t;
@@ -23,36 +23,24 @@ template <> struct uint_t<32> { using type = uint32_t; };
 template <> struct uint_t<64> { using type = uint64_t; };
 // clang-format on
 
+// Provide the type an iterator dereferences to
 template <class iterator>
 using iterator_deref_t =
     std::remove_reference_t<decltype(*std::declval<iterator>())>;
 
-#if 0
-// A class to give a value_type or const value_type depending on whether the
-// iterator's dereferenced value is const or not.
-template <class iterator>
-using iterator_value_type =
-    std::conditional<std::is_const_v<iterator_deref_t<iterator>>,
-                     const typename iterator::value_type,
-                     typename iterator::value_type>;
-#else
-template <class iterator>
-using iterator_value_type = iterator_deref_t<iterator>;
-#endif
-
 template <class base_iterator, size_t bits>
-class packed_uintn_value {
+class uint_value {
 public:
-  using value_type     = typename base_iterator::value_type;
-  packed_uintn_value() = delete;
-  packed_uintn_value(const packed_uintn_value& other) = delete;
-  packed_uintn_value(const base_iterator& value, uint8_t offset)
+  using value_type                    = typename base_iterator::value_type;
+  uint_value()                        = delete;
+  uint_value(const uint_value& other) = delete;
+  uint_value(const base_iterator& value, uint8_t offset)
       : m_value(value), m_offset(offset) {
     static_assert(bits < s_type_bits);
     static_assert(std::is_unsigned_v<value_type>,
                   "signed types are not implemented");
   }
-  const packed_uintn_value& operator=(const value_type& value) const {
+  const uint_value& operator=(const value_type& value) const {
     // TODO: make this atomic using std::atomic_ref
     if constexpr (s_type_bits < 64) {
       using two_uints = typename uint_t<s_type_bits * 2>::type;
@@ -111,7 +99,7 @@ public:
     }
   }
 
-  packed_uintn_value& operator=(const packed_uintn_value& other) {
+  uint_value& operator=(const uint_value& other) {
     *this = static_cast<value_type>(other);
     return *this;
   }
@@ -124,17 +112,17 @@ protected:
 };
 
 template <class base_iterator, size_t bits>
-class packed_uintn_iterator : base_iterator {
+class tight_iterator : base_iterator {
 public:
   using iterator_category = std::random_access_iterator_tag;
-  using value_type        = iterator_value_type<base_iterator>;
-  using reference         = packed_uintn_value<base_iterator, bits>;
+  using value_type        = iterator_deref_t<base_iterator>;
+  using reference         = uint_value<base_iterator, bits>;
   using const_reference   = reference; // must be the same
   using difference_type   = typename base_iterator::difference_type;
   using offset_type       = size_t;
 
-  packed_uintn_iterator() : m_base(), m_offsetBits(0) {}
-  packed_uintn_iterator(base_iterator iter, offset_type offsetElements)
+  tight_iterator() : m_base(), m_offsetBits(0) {}
+  tight_iterator(base_iterator iter, offset_type offsetElements)
       : m_base(iter), m_offsetBits(offsetElements * bits) {}
 
   reference operator*() {
@@ -152,18 +140,18 @@ public:
     return *(*this + index);
   }
 
-  packed_uintn_iterator& operator++() {
+  tight_iterator& operator++() {
     m_offsetBits += bits;
     return *this;
   }
 
-  packed_uintn_iterator operator++(int) {
-    packed_uintn_iterator temp = *this;
+  tight_iterator operator++(int) {
+    tight_iterator temp = *this;
     ++(*this);
     return temp;
   }
 
-  packed_uintn_iterator& operator--() {
+  tight_iterator& operator--() {
     if (m_offsetBits > bits) {
       m_offsetBits -= bits;
     } else {
@@ -173,18 +161,16 @@ public:
     return *this;
   }
 
-  packed_uintn_iterator operator--(int) {
-    packed_uintn_iterator temp = *this;
+  tight_iterator operator--(int) {
+    tight_iterator temp = *this;
     --(*this);
     return temp;
   }
 
-  packed_uintn_iterator& operator+=(difference_type n) {
-    return *this = *this + n;
-  }
+  tight_iterator& operator+=(difference_type n) { return *this = *this + n; }
 
-  packed_uintn_iterator operator+(difference_type n) const {
-    packed_uintn_iterator result(*this);
+  tight_iterator operator+(difference_type n) const {
+    tight_iterator result(*this);
     if (n >= 0) {
       result.m_offsetBits += n * bits;
     } else if (result.m_offsetBits > -n * bits) {
@@ -197,49 +183,47 @@ public:
     return result;
   }
 
-  friend packed_uintn_iterator operator+(difference_type              n,
-                                         const packed_uintn_iterator& it) {
+  friend tight_iterator operator+(difference_type n, const tight_iterator& it) {
     return it + n;
   }
 
-  packed_uintn_iterator& operator-=(difference_type n) { return *this += (-n); }
+  tight_iterator& operator-=(difference_type n) { return *this += (-n); }
 
-  packed_uintn_iterator operator-(difference_type n) const {
+  tight_iterator operator-(difference_type n) const {
     return *this = *this - n;
   }
 
-  friend packed_uintn_iterator operator-(difference_type              n,
-                                         const packed_uintn_iterator& it) {
+  friend tight_iterator operator-(difference_type n, const tight_iterator& it) {
     return it - n;
   }
 
-  difference_type operator-(const packed_uintn_iterator& other) const {
+  difference_type operator-(const tight_iterator& other) const {
     return (std::distance(m_base, other.m_base) * s_baseBits + m_offsetBits -
             other.m_offsetBits) /
            bits;
   }
 
-  bool operator==(const packed_uintn_iterator& other) const {
+  bool operator==(const tight_iterator& other) const {
     return (other - *this) == 0;
   }
 
-  bool operator!=(const packed_uintn_iterator& other) const {
+  bool operator!=(const tight_iterator& other) const {
     return !(*this == other);
   }
 
-  bool operator<(const packed_uintn_iterator& other) const {
+  bool operator<(const tight_iterator& other) const {
     return 0 < (*this - other);
   }
 
-  bool operator<=(const packed_uintn_iterator& other) const {
+  bool operator<=(const tight_iterator& other) const {
     return 0 <= (*this - other);
   }
 
-  bool operator>(const packed_uintn_iterator& other) const {
+  bool operator>(const tight_iterator& other) const {
     return 0 > (*this - other);
   }
 
-  bool operator>=(const packed_uintn_iterator& other) const {
+  bool operator>=(const tight_iterator& other) const {
     return 0 >= (*this - other);
   }
 
@@ -261,45 +245,45 @@ private:
 
 // std::vector backed array
 template <size_t bits, class T = uint32_t>
-class packed_uintn {
+class vector {
 public:
-  using iterator =
-      packed_uintn_iterator<typename std::vector<T>::iterator, bits>;
-  using const_iterator = packed_uintn_iterator<
-      typename std::add_const_t<std::vector<T>>::const_iterator, bits>;
+  using iterator = tight_iterator<typename std::vector<T>::iterator, bits>;
+  using const_iterator =
+      tight_iterator<typename std::add_const_t<std::vector<T>>::const_iterator,
+                     bits>;
   using value_type      = typename iterator::value_type;
   using reference       = typename iterator::reference;
   using const_reference = typename const_iterator::const_reference;
   using size_type       = typename iterator::offset_type;
   using difference_type = typename iterator::difference_type;
 
-  packed_uintn() {}
-  packed_uintn(const packed_uintn& other)
+  vector() {}
+  vector(const vector& other)
       : m_container(other.m_container), m_size(other.m_size) {}
-  explicit packed_uintn(packed_uintn&& other)
+  explicit vector(vector&& other)
       : m_container(std::move(other.m_container)), m_size(other.m_size) {
     other.m_size = 0;
   }
-  explicit packed_uintn(size_type size)
+  explicit vector(size_type size)
       : m_container(required_base_elements(size)), m_size(size) {}
-  explicit packed_uintn(size_type size, const value_type& init)
+  explicit vector(size_type size, const value_type& init)
       : m_container(required_base_elements(size)), m_size(size) {
     std::fill(begin(), end(), init);
   }
-  packed_uintn(std::initializer_list<T> init)
+  vector(std::initializer_list<T> init)
       : m_container(required_base_elements(init.size())), m_size(init.size()) {
     std::copy(init.begin(), init.end(), begin());
   }
 
 #ifdef __cpp_lib_ranges
-  friend packed_uintn& operator|(std::ranges::input_range auto&& range,
-                                 packed_uintn&                   container) {
+  friend vector& operator|(std::ranges::input_range auto&& range,
+                           vector&                         container) {
     auto initial_size = container.size();
     container.resize(container.size() + std::ranges::distance(range));
     std::ranges::copy(range, container.begin() + initial_size);
     return container;
   }
-  packed_uintn(std::ranges::input_range auto&& range) { range | *this; }
+  vector(std::ranges::input_range auto&& range) { range | *this; }
 #endif
 
   reference       operator[](size_type index) { return *(begin() + index); }
@@ -356,11 +340,11 @@ private:
 
 // view of existing data
 template <size_t bits, class T>
-class reinterpret_packed_uintn {
-  friend class reinterpret_packed_uintn<bits, const T>;
+class span {
+  friend class span<bits, const T>;
 
 public:
-  using iterator = packed_uintn_iterator<typename std::span<T>::iterator, bits>;
+  using iterator        = tight_iterator<typename std::span<T>::iterator, bits>;
   using const_iterator  = iterator;
   using value_type      = typename iterator::value_type;
   using reference       = typename iterator::reference;
@@ -370,20 +354,19 @@ public:
   using uint_bits       = std::integral_constant<size_t, bits>;
 
   // Allow empty view
-  reinterpret_packed_uintn() {}
+  span() {}
 
   // Copy constructor to handle direct copy or non-const to const
   template <class U, class = std::enable_if_t<
                          bits == U::uint_bits::value &&
                          (std::is_same_v<T, typename U::value_type> ||
                           std::is_convertible_v<typename U::value_type*, T*>)>>
-  reinterpret_packed_uintn(U& other)
-      : m_span(other.m_span), m_size(other.m_size) {}
+  span(U& other) : m_span(other.m_span), m_size(other.m_size) {}
 
   // Span from range construction
 #ifdef __cpp_lib_ranges
   template <std::ranges::contiguous_range Range>
-  reinterpret_packed_uintn(Range&& range)
+  span(Range&& range)
       : m_span(std::forward<Range>(range)),
         m_size(size_from_base_elements(m_span.size())) {}
 #endif
@@ -395,12 +378,11 @@ public:
                 std::is_same<std::decay_t<Args>, std::decay_t<Args>>...>>
 
             >
-  reinterpret_packed_uintn(Args&&... args)
+  span(Args&&... args)
       : m_span(std::forward<Args>(args)...),
         m_size(size_from_base_elements(m_span.size())) {}
 
-  reinterpret_packed_uintn&
-  operator=(const reinterpret_packed_uintn& other) = delete;
+  span& operator=(const span& other) = delete;
 
   reference       operator[](size_type index) { return *(begin() + index); }
   const_reference operator[](size_type index) const {
@@ -430,12 +412,11 @@ private:
 
 #ifdef __cpp_lib_ranges
 template <size_t bits>
-auto make_reinterpret_packed_uintn(auto&& range) {
+auto make_tight_span(auto&& range) {
   // TODO: this fails due to the reference wrapper, packed_uintn_value
-  using value_type = iterator_value_type<decltype(range.begin())>;
-  // using value_type = decltype(range.begin())::value_type;
-  return reinterpret_packed_uintn<bits, value_type>(range);
+  using value_type = iterator_deref_t<decltype(range.begin())>;
+  return span<bits, value_type>(range);
 }
 #endif
 
-} // namespace packed_intn
+} // namespace tight_uint
