@@ -41,14 +41,16 @@ TEST(Benchmark, CompareMicromesh) {
   assert(sum0 == sum1);
 
   sum0 = 0;
-  nanobench::Bench().run("fill and sum packed_uintn<11>", [&] {
-    std::fill(source0.begin(), source0.end(), 2047u);
+  nanobench::Bench().run("fill packed_uintn<11>", [&] {
+    for (size_t i = 0; i < source0.size(); ++i)
+      source0[i] = 2047u;
+    //std::fill(source0.begin(), source0.end(), 2047u);
     //sum0 = std::accumulate(source0.begin(), source0.end(), sum0);
     //ankerl::nanobench::doNotOptimizeAway(sum0);
   });
 
   sum1 = 0;
-  nanobench::Bench().run("fill and sum micromesh<11>", [&] {
+  nanobench::Bench().run("fill micromesh<11>", [&] {
     void*  data = source1.data();
     size_t size = source1.size();
     for (size_t i = 0; i < size; ++i)
