@@ -9,8 +9,9 @@
 
 using namespace packed_intn;
 
+// verify iterators
 template <class iterator>
-concept check_iterator =
+concept input_and_output_iterator =
     std::input_iterator<iterator> &&
     std::output_iterator<iterator,
                          typename std::iterator_traits<iterator>::value_type>;
@@ -18,14 +19,14 @@ concept check_iterator =
 // packed_uintn concepts
 static_assert(std::ranges::random_access_range<packed_uintn<11>>);
 static_assert(std::ranges::sized_range<packed_uintn<11>>);
-static_assert(check_iterator<typename packed_uintn<11>::iterator>);
+static_assert(input_and_output_iterator<typename packed_uintn<11>::iterator>);
 
 // reinterpret_packed_uintn concepts
 static_assert(
     std::ranges::random_access_range<reinterpret_packed_uintn<11, uint32_t>>);
 static_assert(std::ranges::sized_range<reinterpret_packed_uintn<11, uint32_t>>);
-static_assert(
-    check_iterator<typename reinterpret_packed_uintn<11, uint32_t>::iterator>);
+static_assert(input_and_output_iterator<
+              typename reinterpret_packed_uintn<11, uint32_t>::iterator>);
 
 void printCharArrayInBinary(const uint8_t* arr, std::size_t size,
                             std::size_t bytesPerLine = 4) {
@@ -187,6 +188,13 @@ TEST(UnitTest, ConstArray) {
   }
 }
 
+TEST(UnitTest, Subscript) {
+  packed_uintn<11, uint32_t> array({0, 1, 2, 3, 4, 5});
+  ASSERT_EQ(array[3], 3);
+  const packed_uintn<11, uint32_t> constArray({0, 1, 2, 3, 4, 5});
+  ASSERT_EQ(constArray[3], 3);
+}
+
 TEST(UnitTest, ReinterpretEmpty) {
   std::vector<uint32_t>                  memory;
   reinterpret_packed_uintn<11, uint32_t> array(memory);
@@ -232,16 +240,29 @@ TEST(UnitTest, ReinterpretAccess) {
 TEST(UnitTest, ReinterpretConst) {
   const std::vector<uint32_t> memory(1, 4095u);
   auto                        array = make_reinterpret_packed_uintn<11>(memory);
-  ASSERT_EQ(array[0], 2047u);
+  ASSERT_EQ(*array.begin(), 2047u);
 }
 
-// TODO:
-//TEST(UnitTest, ReinterpretCopy) {
-//  const std::vector<uint32_t> memory(1, 4095u);
-//  auto                        array = make_reinterpret_packed_uintn<11>(memory);
-//  reinterpret_packed_uintn<11, const uint32_t> copy(array);
-//  ASSERT_EQ(copy[0], 2047u);
-//}
+TEST(UnitTest, ReinterpretAsConst) {
+  std::vector<uint32_t>                        memory(1, 4095u);
+  reinterpret_packed_uintn<11, const uint32_t> array(memory);
+  ASSERT_EQ(*array.begin(), 2047u);
+}
+
+TEST(UnitTest, ReinterpretSubscript) {
+  std::vector<uint32_t> memory(2, 4095u);
+  std::ranges::copy(std::vector{0, 1, 2, 3, 4, 5},
+                    reinterpret_packed_uintn<11, uint32_t>(memory).begin());
+  reinterpret_packed_uintn<11, const uint32_t> array(memory);
+  ASSERT_EQ(array[3], 3);
+}
+
+TEST(UnitTest, ReinterpretCopy) {
+  std::vector<uint32_t>                        memory(1, 4095u);
+  reinterpret_packed_uintn<11, uint32_t>       array(memory);
+  reinterpret_packed_uintn<11, const uint32_t> copy(array);
+  ASSERT_EQ(copy[0], 2047u);
+}
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
