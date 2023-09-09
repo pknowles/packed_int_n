@@ -53,32 +53,25 @@ public:
                   "signed types are not implemented");
   }
   const packed_uintn_value& operator=(const value_type& value) const {
+    // TODO: make this atomic using std::atomic_ref
     if constexpr (s_type_bits < 64) {
       using two_uints = typename uint_t<s_type_bits * 2>::type;
       static_assert(sizeof(two_uints) == sizeof(value_type) * 2);
-
-      // Read
-      two_uints result = *m_value;
+      two_uints shifted_mask =
+          ~(static_cast<two_uints>(s_mask_bits()) << m_offset);
+      two_uints shifted_value = static_cast<two_uints>(s_mask_bits() & value)
+                                << m_offset;
+      *m_value &= static_cast<value_type>(shifted_mask);
+      *m_value |= static_cast<value_type>(shifted_value);
+      // Handle bits spanning the base type
       if (m_offset > s_type_bits - bits) {
-        result |= static_cast<two_uints>(*(m_value + 1)) << s_type_bits;
-      }
-      
-      // Modify
-      result &= ~(static_cast<two_uints>(s_mask_bits()) << m_offset);
-      result |= static_cast<two_uints>(s_mask_bits() & value) << m_offset;
-
-      // Write
-      *m_value = static_cast<value_type>(result);
-      if (m_offset > s_type_bits - bits) {
-        *(m_value + 1) = static_cast<value_type>(result >> s_type_bits);
+        *(m_value + 1) &= static_cast<value_type>(shifted_mask >> s_type_bits);
+        *(m_value + 1) |= static_cast<value_type>(shifted_value >> s_type_bits);
       }
     } else {
       const value_type masked_value = s_mask_bits() & value;
       const value_type shifted_mask = s_mask_bits() << m_offset;
-
-      // TODO: make this atomic using std::atomic_ref
       *m_value = (*m_value & ~shifted_mask) | (masked_value << m_offset);
-
       // Handle bits spanning the base type
       if constexpr (s_type_bits % bits != 0) {
         if (m_offset > s_type_bits - bits) {
@@ -97,25 +90,24 @@ public:
       using two_uints = typename uint_t<s_type_bits * 2>::type;
       static_assert(sizeof(two_uints) == sizeof(value_type) * 2);
       two_uints result = *m_value;
-      if (m_offset > s_type_bits - bits) {
-        result |= static_cast<two_uints>(*(m_value + 1)) << s_type_bits;
+      // Handle bits spanning the base type
+      if constexpr (s_type_bits % bits != 0) {
+        if (m_offset > s_type_bits - bits) {
+          result |= static_cast<two_uints>(*(m_value + 1)) << s_type_bits;
+        }
       }
       return (result >> m_offset) & s_mask_bits();
     } else {
-      value_type first = (*m_value >> m_offset) & s_mask_bits();
+      value_type result = (*m_value >> m_offset) & s_mask_bits();
+      // Handle bits spanning the base type
       if constexpr (s_type_bits % bits != 0) {
-        // Handle bits spanning the base type
         if (m_offset > s_type_bits - bits) {
           uint8_t       next_offset = s_type_bits - m_offset;
           base_iterator next_value  = m_value + 1;
-          return first | ((*next_value << next_offset) & s_mask_bits());
+          result |= ((*next_value << next_offset) & s_mask_bits());
         }
-        return first;
-      } else {
-        // Fast path if bits equally divide the type, but then why use this
-        // class at all??
-        return first;
       }
+      return result;
     }
   }
 
